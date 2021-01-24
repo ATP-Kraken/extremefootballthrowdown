@@ -22,7 +22,7 @@ function ENT:PrimaryAttack(pl)
 		self:SetFireTime(CurTime() + self.ChargeTime)
 		self:SetNextFireTime(CurTime() + self.FireDelay)
 
-		if SERVER then self:EmitSound("npc/strider/charging.wav", 78, 77) end
+		if SERVER then self:EmitSound("taunts/throw/melondriver"..math.random(3)..".mp3", 78, 100) end
 	end
 
 	return true
@@ -31,8 +31,6 @@ end
 function ENT:SecondaryAttack(pl)
 	if pl:CanThrow() and self:GetFireTime() == 0 then
 		pl:SetState(STATE_THROW)
-	elseif self:GetFireTime() > 0 then
-		self:SetFireTime(0)
 	end
 
 	return true
@@ -43,52 +41,32 @@ function ENT:Move(pl, move)
 		move:SetMaxSpeed(move:GetMaxSpeed() * 0.7)
 		move:SetMaxClientSpeed(move:GetMaxClientSpeed() * 0.7)
 	else
-		move:SetMaxSpeed(SPEED_ATTACK)
-		move:SetMaxClientSpeed(SPEED_ATTACK)
-
-		return MOVE_STOP
+		move:SetMaxSpeed(move:GetMaxSpeed() * 0.2)
+		move:SetMaxClientSpeed(move:GetMaxClientSpeed() * 0.2)
 	end
 end
 
-local Translated = {
-	[ACT_MP_RUN] = ACT_HL2MP_RUN_PASSIVE,
-
-	[ACT_HL2MP_WALK_SUITCASE] = ACT_HL2MP_WALK_PASSIVE,
-	[ACT_MP_WALK] = ACT_HL2MP_WALK_PASSIVE,
-
-	[ACT_MP_CROUCH_IDLE] = ACT_HL2MP_IDLE_CROUCH_RPG,
-
-	[ACT_MP_CROUCHWALK] = ACT_HL2MP_WALK_CROUCH_PASSIVE,
-
-	[ACT_HL2MP_IDLE_MELEE_ANGRY] = ACT_HL2MP_IDLE_PASSIVE,
-	[ACT_HL2MP_IDLE_ANGRY] = ACT_HL2MP_IDLE_PASSIVE,
-
-	[ACT_MP_JUMP] = ACT_HL2MP_JUMP_PASSIVE,
-
-	[ACT_MP_SWIM] = ACT_HL2MP_SWIM_PASSIVE
-}
-local TranslatedFiring = {
-	[ACT_MP_RUN] = ACT_HL2MP_RUN_RPG,
-
-	[ACT_HL2MP_WALK_SUITCASE] = ACT_HL2MP_WALK_RPG,
-	[ACT_MP_WALK] = ACT_HL2MP_WALK_RPG,
-
-	[ACT_MP_CROUCH_IDLE] = ACT_HL2MP_IDLE_CROUCH_RPG,
-
-	[ACT_MP_CROUCHWALK] = ACT_HL2MP_WALK_CROUCH_RPG,
-
-	[ACT_HL2MP_IDLE_MELEE_ANGRY] = ACT_HL2MP_IDLE_RPG,
-	[ACT_HL2MP_IDLE_ANGRY] = ACT_HL2MP_IDLE_RPG,
-
-	[ACT_MP_JUMP] = ACT_HL2MP_JUMP_RPG,
-
-	[ACT_MP_SWIM] = ACT_HL2MP_SWIM_RPG
-}
-function ENT:TranslateActivity(pl)
-	if self:GetFireTime() == 0 then
-		pl.CalcIdeal = Translated[pl.CalcIdeal] or pl.CalcIdeal
+function ENT:CalcMainActivity(pl, velocity)
+	if self:GetFireTime() ~= 0 then
+		pl.CalcIdeal = pl:Crouching() and ACT_HL2MP_WALK_CROUCH_RPG or ACT_HL2MP_WALK_RPG
+		pl.CalcSeqOverride = -1
+	elseif not pl:OnGround() then
+		pl.CalcIdeal = ACT_HL2MP_JUMP_RPG
+		pl.CalcSeqOverride = -1
+	elseif pl:Crouching() then
+		if velocity:Length() > 0.5 then
+			pl.CalcIdeal = ACT_HL2MP_WALK_CROUCH_RPG
+			pl.CalcSeqOverride = -1
+		else
+			pl.CalcIdeal = ACT_HL2MP_IDLE_CROUCH_RPG
+			pl.CalcSeqOverride = -1
+		end
+	elseif velocity:Length() > 0.5 then
+		pl.CalcIdeal = ACT_HL2MP_RUN_PASSIVE
+		pl.CalcSeqOverride = -1
 	else
-		pl.CalcIdeal = TranslatedFiring[pl.CalcIdeal] or pl.CalcIdeal
+		pl.CalcIdeal = ACT_HL2MP_IDLE_PASSIVE
+		pl.CalcSeqOverride = -1
 	end
 end
 
@@ -100,7 +78,7 @@ function ENT:OnThink()
 			self:HitObject(nil, nil, self.TouchedEnemy)
 		end
 	end
-
+	
 	local carrier = self:GetCarrier()
 	if not carrier:IsValid() then return end
 
@@ -117,7 +95,7 @@ function ENT:OnThink()
 			ang:RotateAroundAxis(ang:Up(), math.Rand(-3, 3))
 			ang:RotateAroundAxis(ang:Right(), math.Rand(-3, 3))
 
-			local ent = ents.Create("prop_carry_melon")
+			local ent = ents.Create("proj_melon")
 			if ent:IsValid() then
 				ent:SetPos(carrier:GetShootPos())
 				ent:SetAngles(ang)
@@ -128,7 +106,7 @@ function ENT:OnThink()
 				local phys = ent:GetPhysicsObject()
 				if phys:IsValid() then
 					phys:Wake()
-					phys:SetVelocityInstantaneous(ang:Forward() * 1600)
+					phys:SetVelocityInstantaneous(ang:Forward() * 1600 + carrier:GetVelocity())
 					phys:AddAngleVelocity(VectorRand() * 600)
 				end
 			end
@@ -161,7 +139,7 @@ function ENT:HitObject(hitpos, hitnormal, hitent)
 
 	if IsValid(hitent) and hitent:IsPlayer() and hitent:Team() ~= self:GetLastCarrierTeam() then
 		hitent:EmitSound("physics/body/body_medium_impact_hard"..math.random(6)..".wav")
-		hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 1.2, 350, 750), true, self:GetLastCarrier())
+		hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 1.2, 350, 750), true)
 		hitent:TakeDamage(20, self:GetLastCarrier(), self)
 	end
 
@@ -216,10 +194,8 @@ function ENT:DrawTranslucent()
 	render.DrawQuadEasy(pos, dir * -1, size, size, color_white, rot)
 end
 
-function ENT:HUDPaint(pl)
-	if self:GetFireTime() ~= 0 then
-		GAMEMODE:DrawCrosshair()
-	end
+function ENT:ShouldDrawCrosshair()
+	return self:GetFireTime() ~= 0
 end
 
 function ENT:GetCameraPos(pl, camerapos, origin, angles, fov, znear, zfar)

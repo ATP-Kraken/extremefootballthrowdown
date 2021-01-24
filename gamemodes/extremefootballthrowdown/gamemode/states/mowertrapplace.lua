@@ -2,14 +2,10 @@ STATE.Time = 0.6
 
 function STATE:Started(pl, oldstate)
 	pl:ResetJumpPower(0)
-	
-	pl:DoAttackEvent()
-	pl:SetStateBool(false)
 end
 
 if SERVER then
 function STATE:Ended(pl, newstate)
-	
 	if newstate == STATE_NONE then
 		local carry = pl:GetCarry()
 		if not carry:IsValid() or carry:GetClass() ~= "prop_carry_mowertrap" then return end
@@ -24,7 +20,7 @@ function STATE:Ended(pl, newstate)
 
 		local tr = util.TraceHull(trace)
 		if tr.Hit then
-			pl:SendLua("surface.PlaySound(\"buttons/button8.wav\")")
+			pl:EmitSound("taunts/pain/doom_oof.wav") --Custom sound
 			return
 		end
 
@@ -54,7 +50,7 @@ function STATE:Ended(pl, newstate)
 
 			carry:Remove()
 		else
-			pl:SendLua("surface.PlaySound(\"buttons/button8.wav\")")
+			pl:EmitSound("taunts/pain/doom_oof.wav") --Custom sound
 		end
 	end
 end
@@ -65,7 +61,10 @@ function STATE:IsIdle(pl)
 end
 
 function STATE:Move(pl, move)
-	move:SetMaxClientSpeed(SPEED_ATTACK)
+	move:SetSideSpeed(0)
+	move:SetForwardSpeed(0)
+	move:SetMaxSpeed(0)
+	move:SetMaxClientSpeed(0)
 
 	return MOVE_STOP
 end
@@ -76,7 +75,7 @@ function STATE:Think(pl)
 	end
 end
 
---[[function STATE:CalcMainActivity(pl, velocity)
+function STATE:CalcMainActivity(pl, velocity)
 	pl.CalcSeqOverride = pl:LookupSequence("seq_preskewer")
 end
 
@@ -85,4 +84,4 @@ function STATE:UpdateAnimation(pl, velocity, maxseqgroundspeed)
 	pl:SetPlaybackRate(0)
 
 	return true
-end]]
+end

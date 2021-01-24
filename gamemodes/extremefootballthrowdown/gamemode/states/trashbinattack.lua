@@ -2,17 +2,10 @@ STATE.Time = 0.75
 
 function STATE:Started(pl, oldstate)
 	pl:ResetJumpPower(0)
-	
-	pl:DoAttackEvent()
-	pl:SetStateBool(false)
+	if SERVER then
+	pl:EmitSound("npc/metropolice/vo/pickupthecan"..math.random(3)..".wav")
+	end
 end
-
-function STATE:Ended(pl, newstate)
-	if newstate ~= STATE_NONE or not pl:GetCarry():IsValid() or pl:GetCarry():GetClass() ~= "prop_carry_trashbin" then return end
-
-	pl:DoAttackEvent()
-end
-
 
 --[[if SERVER then
 function STATE:Ended(pl, newstate)
@@ -47,7 +40,10 @@ function STATE:IsIdle(pl)
 end
 
 function STATE:Move(pl, move)
-	move:SetMaxClientSpeed(SPEED_ATTACK)
+	move:SetSideSpeed(0)
+	move:SetForwardSpeed(0)
+	move:SetMaxSpeed(0)
+	move:SetMaxClientSpeed(0)
 
 	return MOVE_STOP
 end
@@ -65,8 +61,13 @@ function STATE:ThinkCompensatable(pl)
 		if CurTime() < pl:GetStateStart() + self.Time then return end
 
 		if SERVER then
-			local targets = pl:GetTargets(nil, nil, nil, nil, true)
-			for _, tr in ipairs(targets) do
+			local comp = pl:ShouldCompensate()
+
+			if comp then
+				pl:LagCompensation(true)
+			end
+
+			for _, tr in ipairs(pl:GetTargets()) do
 				local hitent = tr.Entity
 				if hitent:IsPlayer() then
 					local ent = ents.Create("prop_trashbin")
@@ -75,14 +76,21 @@ function STATE:ThinkCompensatable(pl)
 						ent:SetOwner(hitent)
 						ent:SetParent(hitent)
 						ent:Spawn()
+						ent:SetColor(Color(255, 255, 255, 176) )
+						ent:SetRenderMode( RENDERMODE_TRANSCOLOR )
+						ent:EmitSound("taunts/pain/groundpound2.wav")
 					end
 
 					hitent:TakeDamage(1, pl, carry)
-
+					hitent:ThrowFromPosition(pl:GetPos() + Vector(0, 0, -24), 100, true)
 					carry:Remove()
 
 					break
 				end
+			end
+
+			if comp then
+				pl:LagCompensation(false)
 			end
 		end
 
@@ -90,7 +98,7 @@ function STATE:ThinkCompensatable(pl)
 	end
 end
 
---[[function STATE:CalcMainActivity(pl, velocity)
+function STATE:CalcMainActivity(pl, velocity)
 	pl.CalcSeqOverride = pl:LookupSequence("seq_preskewer")
 end
 
@@ -99,4 +107,4 @@ function STATE:UpdateAnimation(pl, velocity, maxseqgroundspeed)
 	pl:SetPlaybackRate(0)
 
 	return true
-end]]
+end
