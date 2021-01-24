@@ -2,10 +2,20 @@ STATE.Time = 2
 
 function STATE:Started(pl, oldstate)
 	pl:ResetJumpPower(0)
-
+	pl:SetCycle(0)
+	
 	if SERVER then
+	if !pl.WinnerTeam and !pl.LoserTeam then
 		pl:PlayVoiceSet(VOICESET_OVERHERE)
 	end
+	end
+	
+	if pl.WinnerTeam or pl.LoserTeam then -- Post-round taunting
+		local state = STATE_WAVE_DANCE
+	pl:EndState(true)
+		timer.Simple(0.1,function() pl:SetState(state, STATES[state].Time) end)
+	end
+	
 end
 
 function STATE:IsIdle(pl)
@@ -26,7 +36,7 @@ function STATE:Move(pl, move)
 end
 
 function STATE:Think(pl)
-	if not pl:IsOnGround() or pl:WaterLevel() >= 2 or pl:IsCarrying() then
+	if not pl:IsOnGround() or pl:WaterLevel() >= 2 or pl:IsCarrying() or pl:KeyDown(IN_ATTACK) then
 		pl:EndState(true)
 	end
 end

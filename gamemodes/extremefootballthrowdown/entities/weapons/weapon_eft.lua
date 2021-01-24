@@ -24,7 +24,24 @@ function SWEP:Think()
 	if not self.Owner:CallCarryFunction("ThinkCompensatable") then
 		self.Owner:CallStateFunction("ThinkCompensatable")
 	end
-
+	local owner = self.Owner
+	
+	if owner:CanCharge() and !owner:GetNWBool("HasChaseMusic",false) then
+	for k,v in pairs(ents.FindInBox(owner:GetPos()+Vector(1028,1028,64),owner:GetPos()+Vector(-1028,-1028,0))) do
+		if v:IsPlayer() and v:Team() != TEAM_SPECTATOR and v:Team() != owner:Team() and v:IsIdle() and owner:GetVelocity():Dot(v:GetVelocity()) > 0.5 and (owner:GetVelocity()+v:GetVelocity()):Length2DSqr() > 70000 then
+		owner:SetNWBool("HasChaseMusic",true)
+		v:SetNWBool("HasChaseMusic",true)
+		if SERVER then
+		ent = ents.Create("eft_chasemusic_helper")
+		ent:SetPos(owner:GetPos())
+		ent:SetNWEntity("Player1",owner)
+		ent:SetNWEntity("Player2",v)
+		ent:Spawn()
+		end
+		end
+    end
+	end
+	
 	self:NextThink(CurTime())
 	return true
 end

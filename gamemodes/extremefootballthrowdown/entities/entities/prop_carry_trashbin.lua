@@ -8,6 +8,7 @@ ENT.Name = "Trash Bin"
 ENT.IsPropWeapon = true
 
 ENT.Model = Model("models/props_trainstation/trashcan_indoor001b.mdl")
+ENT.PickupSound = Sound("physics/metal/metal_canister_impact_soft3.wav")
 ENT.ThrowForce = 550
 
 ENT.BoneName = "ValveBiped.Bip01_R_Hand"
@@ -16,13 +17,13 @@ ENT.AttachmentAngles = Angle(90, 0, 90)
 
 function ENT:Initialize()
 	self.BaseClass.Initialize(self)
-
+	
 	self.NextTouch = {}
 end
 
 function ENT:PrimaryAttack(pl)
 	if pl:CanMelee() then
-		pl:SetState(STATE_TRASHBINATTACK, STATES[STATE_TRASHBINATTACK].Time)
+		pl:SetState(STATE_TRASHBINATTACK--[[, STATES[STATE_TRASHBINATTACK].Time]])
 	end
 
 	return true
@@ -41,24 +42,6 @@ function ENT:Move(pl, move)
 	move:SetMaxClientSpeed(move:GetMaxClientSpeed() * 0.75)
 end
 
-local Translated = {
-	[ACT_MP_RUN] = ACT_HL2MP_RUN_MELEE,
-	[ACT_HL2MP_WALK_SUITCASE] = ACT_HL2MP_WALK_MELEE,
-	[ACT_MP_WALK] = ACT_HL2MP_WALK_MELEE,
-	[ACT_HL2MP_IDLE_MELEE_ANGRY] = ACT_HL2MP_IDLE_MELEE,
-	[ACT_HL2MP_IDLE_ANGRY] = ACT_HL2MP_IDLE_MELEE
-}
-function ENT:TranslateActivity(pl)
-	pl.CalcIdeal = Translated[pl.CalcIdeal] or pl.CalcIdeal
-end
-
-function ENT:DoAnimationEvent(pl, event, data)
-	if event == PLAYERANIMEVENT_ATTACK_PRIMARY then
-		pl:AnimRestartGesture(GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_HL2MP_GESTURE_RANGE_ATTACK_MELEE, true)
-		return ACT_INVALID
-	end
-end
-
 function ENT:GetImpactSpeed()
 	return self:GetLastCarrier():IsValid() and 200 or 450
 end
@@ -69,7 +52,15 @@ function ENT:RefreshBoneName()
 	self.BoneName = carrier:IsValid() and carrier:IsPlayer() and carrier:GetState() == STATE_TRASHBINATTACK and "ValveBiped.Bip01_L_Hand" or "ValveBiped.Bip01_R_Hand"
 end
 
-if CLIENT then return end
+if CLIENT then
+
+function ENT:OnThink()
+	self:RefreshBoneName()
+end
+
+return
+
+end
 
 function ENT:OnThink()
 	self:RefreshBoneName()
@@ -98,9 +89,19 @@ function ENT:HitObject(hitpos, hitnormal, hitent)
 	hitnormal = hitnormal or Vector(0, 0, 1)
 
 	if IsValid(hitent) and hitent:IsPlayer() and hitent:Team() ~= self:GetLastCarrierTeam() then
-		hitent:EmitSound("physics/body/body_medium_impact_hard"..math.random(6)..".wav")
-		hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 1.2, 350, 750), true, self:GetLastCarrier())
-		hitent:TakeDamage(20, self:GetLastCarrier(), self)
+		local ent = ents.Create("prop_trashbin")
+					if ent:IsValid() then
+						ent:SetPos(hitent:EyePos())
+						ent:SetOwner(hitent)
+						ent:SetParent(hitent)
+						ent:Spawn()
+						ent:SetColor(Color(255, 255, 255, 128) )
+						ent:SetRenderMode( RENDERMODE_TRANSCOLOR )
+						ent:EmitSound("taunts/pain/groundpound2.wav")
+					end
+		--hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 1.2, 350, 750), true)
+		hitent:TakeDamage(1, self:GetLastCarrier(), self)
+		SafeRemoveEntity(self)
 	end
 
 	self:EmitSound("physics/metal/metal_canister_impact_hard"..math.random(3)..".wav")

@@ -8,8 +8,6 @@ function STATE:Started(pl, oldstate)
 		if 1 <= pl:Health() and pl:Alive() then
 			pl:CreateRagdoll()
 		end
-
-		pl:SetCollisionMode(COLLISION_PASSTHROUGH)
 	end
 
 	pl:SetStateInteger(KD_STATE_NONE)
@@ -33,14 +31,10 @@ function STATE:Ended(pl, newstate)
 		if rag and rag:IsValid() then
 			rag:Remove()
 		end
-
-		pl:SetCollisionMode(COLLISION_AVOID)
 	end
 end
 
 function STATE:GoToNextState(pl)
-	if not pl:OnGround() then return end
-
 	local dir = vector_origin
 	if pl:KeyDown(IN_FORWARD) then
 		dir = dir + pl:GetForward()
@@ -82,14 +76,23 @@ function STATE:Move(pl, move)
 end
 
 function STATE:CalcMainActivity(pl)
+	if pl:WaterLevel() > 1 then
+	pl.CalcSeqOverride = pl:LookupSequence("zombie_leap_start")
+	else
 	pl.CalcSeqOverride = pl:LookupSequence(pl:GetStateBool() and "zombie_slump_rise_02_fast" or "zombie_slump_rise_01")
+	end
 
 	return true
 end
 
 function STATE:UpdateAnimation(pl)
 	local delta = 1 - (pl:GetStateEnd() - CurTime())
+	if pl:WaterLevel() > 1 then
+	pl:SetCycle(delta * 0.5 ^ 0.5 * 0.8 + 0.4)
+	else
 	pl:SetCycle(delta * 0.5 ^ 0.5 * 0.8 + 0.1)
+	end
+	
 	pl:SetPlaybackRate(0)
 
 	return true
@@ -99,7 +102,20 @@ if SERVER then
 
 function STATE:Think(pl)
 	local state = pl:GetStateInteger()
-	if state == KD_STATE_GETTINGUP then return end
+	
+	
+	if state == KD_STATE_GETTINGUP then 
+	if (team.HasPity(pl:Team()) or pl:Armor() > 0) and pl:GetStateEnd() < CurTime()  + 0.8 then
+		if SERVER then
+		pl:SetArmor(0)
+		end
+		self:GoToNextState(pl)
+	end
+	if pl:KeyDown(IN_ATTACK) and pl:WaterLevel() < 2 then
+		local state = STATE_GETUPATTACK
+		pl:SetState(state, STATES[state].Time)
+	end
+	return end
 
 	if state == KD_STATE_DIVETACKLED then
 		local tackler = pl:GetStateEntity()
@@ -113,7 +129,7 @@ function STATE:Think(pl)
 	end
 
 	if state == KD_STATE_WALLSLAM then
-		if pl:IsOnGround() or pl:IsOnPlayer() or pl:WaterLevel() >= 2 then
+		if pl:Armor() > 0 or pl:IsOnGround() or pl:IsOnPlayer() or pl:WaterLevel() >= 2 then
 			pl:SetStateInteger(KD_STATE_NONE)
 			pl:SetStateEnd(CurTime() + 1)
 		elseif pl._KNOCKDOWNWALLFREEZE then
@@ -125,7 +141,7 @@ function STATE:Think(pl)
 		end
 	elseif pl:GetStateInteger() == KD_STATE_NONE then
 		if pl:GetStateEnd() > 0 and pl:GetStateEnd() < CurTime() + 1 then
-			if pl:GetVelocity():Length() >= 100 then
+			if pl:GetVelocity():Length() >= 100 and pl:Armor() < 1 then
 				pl:SetStateEnd(CurTime() + 1)
 			else
 				pl:SetStateInteger(KD_STATE_GETTINGUP)
