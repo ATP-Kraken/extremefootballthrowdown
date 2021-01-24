@@ -4,24 +4,25 @@ ENT.Type = "anim"
 ENT.Base = "prop_carry_base"
 
 ENT.Name = "Beatdown Stick"
-ENT.PickupSound = Sound("weapons/draw_sword.wav")
+
 ENT.IsPropWeapon = true
 
-ENT.Model = Model("models/weapons/w_crowbar.mdl")
+ENT.Model = Model("models/weapons/w_stunbaton.mdl")
 ENT.ThrowForce = 850
 
 ENT.BoneName = "ValveBiped.Bip01_R_Hand"
-ENT.AttachmentOffset = Vector(4, 1, -15)
-ENT.AttachmentAngles = Angle(90, 180, -90)
+ENT.AttachmentOffset = Vector(4.5, 1.5, -15)
+ENT.AttachmentAngles = Angle(80, 180, 10)
 
 ENT.Mass = 40
 
 ENT.AllowDuringOverTime = true
+ENT.AllowInCompetitive = true
 
 function ENT:Initialize()
 	self.BaseClass.Initialize(self)
 
-	self:SetModelScale(1.7, 0)
+	self:SetModelScale(2, 0)
 
 	self.NextTouch = {}
 end
@@ -45,6 +46,24 @@ end
 function ENT:Move(pl, move)
 	move:SetMaxSpeed(move:GetMaxSpeed() * 0.8)
 	move:SetMaxClientSpeed(move:GetMaxClientSpeed() * 0.8)
+end
+
+local Translated = {
+	[ACT_MP_RUN] = ACT_HL2MP_RUN_MELEE,
+	[ACT_HL2MP_WALK_SUITCASE] = ACT_HL2MP_WALK_MELEE,
+	[ACT_MP_WALK] = ACT_HL2MP_WALK_MELEE,
+	[ACT_HL2MP_IDLE_MELEE_ANGRY] = ACT_HL2MP_IDLE_MELEE,
+	[ACT_HL2MP_IDLE_ANGRY] = ACT_HL2MP_IDLE_MELEE
+}
+function ENT:TranslateActivity(pl)
+	pl.CalcIdeal = Translated[pl.CalcIdeal] or pl.CalcIdeal
+end
+
+function ENT:DoAnimationEvent(pl, event, data)
+	if event == PLAYERANIMEVENT_ATTACK_PRIMARY then
+		pl:AnimRestartGesture(GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_HL2MP_GESTURE_RANGE_ATTACK_MELEE, true)
+		return ACT_INVALID
+	end
 end
 
 function ENT:GetImpactSpeed()
@@ -72,17 +91,7 @@ function ENT:HitObject(hitpos, hitnormal, hitent)
 
 	if IsValid(hitent) and hitent:IsPlayer() and hitent:Team() ~= self:GetLastCarrierTeam() then
 		hitent:EmitSound("npc/zombie/zombie_hit.wav", 75, math.Rand(90, 140))
-		
-		ball = GAMEMODE:GetBall()
-			local desstate = BALL_STATE_BREAKER --Special ball upgrade
-			local scorestate = BALL_STATE_SCOREBALL
-			local ultimatestate = BALL_STATE_ULTIMATE
-			if ball:GetCarrier() == hitent and ball:GetState() ~= desstate and ball:GetState() ~= scorestate and ball:GetState() ~= ultimatestate then
-				ball:SetState(desstate, 20)
-				ball:SetAutoReturn(0)
-			end
-			
-		hitent:ThrowFromPosition(hitent:GetPos() + Vector(0, 0, -16), 200, true)
+		hitent:ThrowFromPosition(hitent:GetPos() + Vector(0, 0, -16), 200, true, self:GetLastCarrier())
 		hitent:TakeDamage(5, self:GetLastCarrier(), self)
 
 		local phys = self:GetPhysicsObject()
@@ -94,17 +103,13 @@ function ENT:HitObject(hitpos, hitnormal, hitent)
 		end
 	end
 
-	self:EmitSound("weapons/crowbar/crowbar_impact"..math.random(2)..".wav")
+	self:EmitSound("physics/metal/metal_canister_impact_hard"..math.random(3)..".wav")
 end
 
 function ENT:PhysicsCollide(data, phys)
 	if data.Speed >= 200 then
-		if math.random(3) > 2 then
-		self:EmitSound("ui/item_wood_pole_drop.wav",math.min(data.Speed/4.5,100),math.Rand(65, 115))
-	else
-		self:EmitSound("ui/item_wood_pole_pickup.wav",math.min(data.Speed/4.5,100),math.Rand(65, 115))
-		end
-	
+		self:EmitSound("physics/metal/weapon_impact_hard"..math.random(3)..".wav")
+
 		self:NextThink(CurTime())
 	end
 end

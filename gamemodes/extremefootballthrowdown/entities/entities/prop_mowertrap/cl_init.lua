@@ -10,7 +10,7 @@ function ENT:Initialize()
 		self.Blade = ent
 	end
 
-	self.AmbientSound = CreateSound(self, "taunts/throw/mower.mp3") --Custom sound
+	self.AmbientSound = CreateSound(self, "ambient/machines/spin_loop.wav")
 end
 
 function ENT:OnRemove()

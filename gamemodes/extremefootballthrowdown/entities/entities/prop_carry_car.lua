@@ -15,6 +15,8 @@ ENT.BoneName = "ValveBiped.Bip01_R_Hand"
 ENT.AttachmentOffset = Vector(4, 4, 0)
 ENT.AttachmentAngles = Angle(90, 0, 90)
 
+ENT.GravityThrowMul = 0.4
+
 local RandomProps = {
 	Model("models/props_vehicles/carparts_axel01a.mdl"),
 	Model("models/props_vehicles/carparts_door01a.mdl"),
@@ -64,7 +66,7 @@ end
 
 function ENT:OnThrown(carrier)
 	self:SetThrown(true)
-	self:EmitSound("taunts/throw/twotrucks.mp3",100) --Custom sound
+
 	if carrier:IsValid() then self.Dir = carrier:GetAimVector() end
 end
 
@@ -101,7 +103,7 @@ end
 if CLIENT then
 
 util.PrecacheSound("vehicles/v8/v8_start_loop1.wav")
---util.PrecacheSound("vehicles/v8/v8_turbo_on_loop1.wav")
+util.PrecacheSound("vehicles/v8/v8_turbo_on_loop1.wav")
 
 local matLight = Material("sprites/light_ignorez")
 function ENT:DrawSpotlight(offset)
@@ -116,7 +118,7 @@ function ENT:DrawSpotlight(offset)
 		local LightPos = epos + LightNrm * 5
 
 		render.SetMaterial(matLight)
-		local Visibile = util.PixelVisible(LightPos, 16, self.PixVis)	
+		local Visibile = util.PixelVisible(LightPos, 16, self.PixVis)
 
 		if not Visibile then return end
 
@@ -156,8 +158,7 @@ function ENT:Initialize()
 	self.PixVis = util.GetPixelVisibleHandle()
 
 	self.AmbientSound = CreateSound(self, "vehicles/v8/v8_start_loop1.wav")
-	--self.ThrownSound = CreateSound(self, "vehicles/v8/v8_turbo_on_loop1.wav")
-	self.ThrownSound = CreateSound(self, "taunts/throw/annoying.mp3")
+	self.ThrownSound = CreateSound(self, "vehicles/v8/v8_turbo_on_loop1.wav")
 end
 
 function ENT:OnRemove()
@@ -171,7 +172,7 @@ function ENT:Think()
 	self.BaseClass.Think(self)
 
 	if self:GetThrown() then
-		self.ThrownSound:Play(0.5, 150 + CurTime() % 1)
+		self.ThrownSound:Play(0.8, 150 + CurTime() % 1)
 		self.AmbientSound:Stop()
 	else
 		self.ThrownSound:Stop()
@@ -196,13 +197,16 @@ function ENT:OnThink()
 
 	if not self.Exploded then
 		local pos = self:GetPos()
-		local oldpos = self.LastPos
-		if oldpos then
-			local tr = util.TraceLine({start = oldpos, endpos = pos, mask = MASK_SOLID_BRUSHONLY})
-			if tr.Hit then
-				self:Explode(tr.HitPos, tr.HitNormal)
+		if not self:GetCarrier():IsValid() then
+			local oldpos = self.LastPos
+			if oldpos then
+				local tr = util.TraceLine({start = oldpos, endpos = pos, mask = MASK_SOLID_BRUSHONLY})
+				if tr.Hit then
+					self:Explode(tr.HitPos, tr.HitNormal)
+				end
 			end
 		end
+
 		self.LastPos = pos
 	end
 end

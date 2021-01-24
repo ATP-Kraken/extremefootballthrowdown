@@ -27,8 +27,8 @@ if SERVER then
 	end
 
 	function STATE:Start(ball, samestate)
-		ball:EmitSound("npc/attack_helicopter/aheli_charge_up.wav", 90, 100)
-		ball:SetGravity(0.25)
+		ball:EmitSound("npc/attack_helicopter/aheli_charge_up.wav", 100, 100)
+
 		local carrier = ball:GetCarrier()
 		if carrier:IsValid() then
 			AddEffect(carrier)
@@ -36,8 +36,8 @@ if SERVER then
 	end
 
 	function STATE:End(ball)
-		ball:EmitSound("npc/barnacle/barnacle_die1.wav", 90, 100)
-		ball:SetGravity(1)
+		ball:EmitSound("npc/barnacle/barnacle_die1.wav", 100, 100)
+
 		local carrier = ball:GetCarrier()
 		if carrier:IsValid() then
 			RemoveEffect(carrier)

@@ -4,14 +4,13 @@ AddCSLuaFile("shared.lua")
 include("shared.lua")
 
 ENT.LastCarrierTeam = 0
-ENT.PickupSound = Sound("ui/item_heavy_gun_pickup.wav")
 
 function ENT:Initialize()
 	self:SetModel(self.Model)
 	self:PhysicsInit(SOLID_VPHYSICS)
 	self:SetMoveType(MOVETYPE_VPHYSICS)
 	self:SetSolid(SOLID_VPHYSICS)
-	self:SetCollisionGroup(COLLISION_GROUP_WEAPON) --Slightly modified from original
+	self:SetCollisionGroup(COLLISION_GROUP_DEBRIS_TRIGGER)
 	self:SetTrigger(true)
 
 	local phys = self:GetPhysicsObject()
@@ -36,12 +35,6 @@ function ENT:Think()
 	local carrier = self:GetCarrier()
 	if not carrier:IsValid() or not carrier:Alive() then
 		self:SetCarrier(NULL)
-	elseif not carrier:GetCarry():IsValid() then
-		if carrier:GetState() == THROW then
-		carrier:SetCarry(self)
-	else
-		self:SetCarrier(NULL)
-		end
 	end
 
 	self:OnThink()
@@ -53,7 +46,7 @@ function ENT:Think()
 
 		self:Remove()
 	end
-	
+
 	self:NextThink(CurTime())
 	return true
 end
@@ -66,10 +59,11 @@ function ENT:OnThink()
 end
 
 function ENT:Touch(ent)
-	if ent:IsPlayer() and (not self:GetCarrier():IsValid()) and ent:Alive() and self:GetVelocity():Length() < 200 and (not ent:IsCarrying()) and ent:CallStateFunction("CanPickup", self) and (self:GetLastCarrier() ~= ent or CurTime() > (self.m_PickupImmunity or 0))	and (ent:Team() ~= self:GetLastCarrierTeam() or CurTime() > (self.m_TeamPickupImmunity or 0)) then
+	if ent:IsPlayer() and not self:GetCarrier():IsValid() and ent:Alive() and not ent:IsCarrying() and self:GetVelocity():Length() < 200
+	and ent:CallStateFunction("CanPickup", self) and (self:GetLastCarrier() ~= ent or CurTime() > (self.m_PickupImmunity or 0))
+	and (ent:Team() ~= self:GetLastCarrierTeam() or CurTime() > (self.m_TeamPickupImmunity or 0)) then
 		if ent:KeyDown(IN_USE) then
 			self:SetCarrier(ent)
-			self:EmitSound(self.PickupSound)
 		elseif ent:GetPotentialCarry() ~= self then
 			ent:SetPotentialCarry(self)
 		end

@@ -13,14 +13,7 @@ end
 local FrozenSequences = {
 	"pose_standing_01",
 	"pose_standing_02",
-	"pose_standing_01",
-	"pose_standing_02",
-	"pose_standing_04",
-	"idle_suitcase",
-	"menu_gman",
-	"idle_crowbar",
-	"pose_crouching_01",
-	"idle_slam"
+	"idle_suitcase"
 }
 
 function STATE:EntityTakeDamage(dmginfo)

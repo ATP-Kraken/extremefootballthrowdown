@@ -18,15 +18,9 @@ function STATE:Ended(pl, newstate)
 		if carrying.Drop then
 			local throwforce = self:GetThrowForce(pl)
 
-			local throwpos
-			if util.TraceLine({start = pl:GetPos() + Vector(0, 0, 4), endpos = pl:GetPos() + Vector(0, 0, pl:OBBMaxs().z + 4), mask = MASK_SOLID_BRUSHONLY}).Hit then
-				throwpos = pl:WorldSpaceCenter()
-			else
-				throwpos = pl:GetShootPos()
-			end
-
 			carrying:Drop(throwforce)
-			carrying:SetPos(throwpos)
+			carrying:EmitSound("weapons/stinger_fire1.wav", 76, 100)
+			carrying:SetPos(self:GetThrowPos(pl))
 
 			local phys = carrying:GetPhysicsObject()
 			if phys:IsValid() then
@@ -34,25 +28,17 @@ function STATE:Ended(pl, newstate)
 				phys:SetVelocityInstantaneous(pl:GetAimVector() * throwforce)
 				phys:AddAngleVelocity(VectorRand() * math.Rand(-450, 450))
 			end
-	
-		for _, ent in pairs(ents.FindByClass("prop_carry_*")) do
-			if ent:GetCarrier() ~= pl then return end
-		ent:SetCarrier(NULL)
-		ent:Drop(throwforce)
-		ent:SetPos(throwpos)
-		local phys2 = ent:GetPhysicsObject()
-			if phys2:IsValid() then
-				phys2:Wake()
-			phys2:SetVelocityInstantaneous((pl:GetAimVector() * throwforce * 0.7)+VectorRand() * math.Rand(-450, 450))
-				phys2:AddAngleVelocity(VectorRand() * math.Rand(-450, 450))
-			end
-    end
-	
 		end
-		
-	
 	end
 end
+end
+
+function STATE:GetThrowPos(pl)
+	if util.TraceLine({start = pl:GetPos() + Vector(0, 0, 4), endpos = pl:GetPos() + Vector(0, 0, pl:OBBMaxs().z + 4), mask = MASK_SOLID_BRUSHONLY}).Hit then
+		return pl:WorldSpaceCenter()
+	end
+
+	return pl:GetShootPos()
 end
 
 function STATE:GetThrowPower(pl)
@@ -100,19 +86,15 @@ function STATE:Think(pl)
 			pl:SetStateNumber(self:GetThrowPower(pl))
 			pl:SetStateBool(true)
 
-			if SERVER and pl:GetCarry():IsValid() then
-				pl:GetCarry():EmitSound("EFTaunts.Throw")
+			if SERVER then
+				pl:EmitSound("npc/zombie/claw_miss"..math.random(2)..".wav", 72, math.Rand(77, 83))
 			end
 		end
 	end
 end
 
 function STATE:CalcMainActivity(pl, velocity)
-	if pl:GetCarry():IsValid() and pl:GetCarry() == GAMEMODE:GetBall() and GAMEMODE:GetBall():GetNWBool("Handedness") then
-	pl.CalcSeqOverride = pl:LookupSequence("gesture_item_give_original")
-	else
 	pl.CalcSeqOverride = pl:LookupSequence("seq_throw")
-	end
 
 	return true
 end
@@ -126,9 +108,7 @@ function STATE:UpdateAnimation(pl, velocity, maxseqgroundspeed)
 		else
 			pl:SetCycle(throwpower * 0.2)
 		end]]
-	elseif pl:GetCarry():IsValid() and pl:GetCarry() == GAMEMODE:GetBall() and GAMEMODE:GetBall():GetNWBool("Handedness") then
-		pl:SetCycle(math.Clamp((CurTime() - pl:GetStateStart()) / self.AnimTime * 0.7 +0.3, 0, 1))
-else	
+	else
 		pl:SetCycle(math.Clamp((CurTime() - pl:GetStateStart()) / self.AnimTime * 0.9, 0, 1))
 	end
 	pl:SetPlaybackRate(0)
@@ -142,15 +122,14 @@ function STATE:GetCameraPos(pl, camerapos, origin, angles, fov, znear, zfar)
 	pl:ThirdPersonCamera(camerapos, origin, angles, fov, znear, zfar, pl:GetStateEnd() == 0 and math.Clamp((CurTime() - pl:GetStateStart()) / 0.2, 0, 1) or 1)
 end
 
-function STATE:ShouldDrawCrosshair()
-	return true
+function STATE:HUDPaint(pl)
+	GAMEMODE:DrawAngleFinder()
+
+	if GAMEMODE.ThrowingGuide and not GAMEMODE:IsCompetitive() then
+		GAMEMODE:DrawCrosshair()
+	end
 end
 
-function STATE:ShouldDrawAngleFinder()
-	return true
-end
-
-local color_black_alpha160 = Color(0, 0, 0, 160)
 function STATE:Draw3DHUD(pl)
 	local w, h = 400, 40
 	local x, y = w * -0.5, h * -0.5
@@ -177,4 +156,44 @@ function STATE:Draw3DHUD(pl)
 	cam.IgnoreZ(false)
 	--render.PopFilterMin()
 	--render.PopFilterMag()
+end
+
+local matTest = Material("effects/select_ring")
+local color_black_alpha160 = Color(0, 0, 0, 160)
+local trace = {mask = MASK_SOLID_BRUSHONLY--[[, filter = function(ent) return not ent:IsPlayer() end]], mins = Vector(-6, -6, -6), maxs = Vector(6, 6, 6)}
+local step = 0.025
+function STATE:PreDraw3DHUD(pl)
+	if not GAMEMODE.ThrowingGuide or GAMEMODE:IsCompetitive() then return end
+
+	local startpos = self:GetThrowPos(pl)
+	local v0 = self:GetThrowForce(pl) * pl:GetAimVector()
+	local carry = pl:GetCarrying()
+	local g = 300
+	local bt = CurTime() * -10
+	local tr, t1, size
+
+	if carry and carry:IsValid() and carry.GravityThrowMul then
+		g = g * carry.GravityThrowMul
+	end
+
+	render.SetMaterial(matTest)
+
+	for t0=0, 3, step do
+		t1 = t0 + step
+		trace.start = startpos + v0 * t0
+		trace.start.z = trace.start.z - g * t0 * t0
+		trace.endpos = startpos + v0 * t1
+		trace.endpos.z = trace.endpos.z - g * t1 * t1
+
+		tr = util.TraceHull(trace)
+
+		size = 9 + math.max(0, math.sin(bt + t0 * 4)) * 7
+
+		if tr.Hit then
+			render.DrawQuadEasy(tr.HitPos, tr.HitNormal, 48, 48, COLOR_RED)
+			break
+		else
+			render.DrawQuadEasy(tr.HitPos, tr.Normal, size, size, color_white)
+		end
+	end
 end
