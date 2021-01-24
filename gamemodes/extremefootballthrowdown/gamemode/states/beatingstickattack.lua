@@ -5,6 +5,7 @@ STATE.FOV = 90
 
 function STATE:Started(pl, oldstate)
 	pl:ResetJumpPower(0)
+
 	pl:DoAttackEvent()
 	pl:SetStateBool(false)
 
@@ -17,8 +18,10 @@ function STATE:IsIdle(pl)
 	return false
 end
 
-function STATE:PreMove(ball, pl, move)
-	move:SetMaxSpeed(move:GetMaxSpeed() * 0.5)
+function STATE:Move(pl, move)
+	move:SetMaxClientSpeed(SPEED_ATTACK)
+
+	return MOVE_STOP
 end
 
 function STATE:OnChargedInto(pl, otherpl)
@@ -57,15 +60,10 @@ function STATE:OnHitWithArcaneBolt(pl, ent)
 end
 
 function STATE:HitEntity(pl, hitent, tr, spinny)
-	local knockdown = CurTime() >= hitent:GetKnockdownImmunity(self)
-	hitent:ThrowFromPosition(pl:GetLaunchPos(), 450, knockdown, pl)
-	if knockdown then
-		hitent:ResetKnockdownImmunity(self)
-	end
-	hitent:TakeDamage(12, pl)
-	if spinny then
+	if hitent:ThrowFromPosition(pl:GetLaunchPos(), 450, true, pl) and spinny then
 		hitent:SetState(STATE_SPINNYKNOCKDOWN, STATES[STATE_SPINNYKNOCKDOWN].Time)
 	end
+	hitent:TakeDamage(12, pl)
 
 	pl:ViewPunch(VectorRand():Angle() * (math.random(2) == 1 and -1 or 1) * 0.1)
 
@@ -77,49 +75,61 @@ function STATE:HitEntity(pl, hitent, tr, spinny)
 end
 
 function STATE:ThinkCompensatable(pl)
-	if not (pl:IsOnGround() and pl:WaterLevel() < 2) then
+	if not pl:IsOnGround() and not pl:IsSwimming() then
 		pl:EndState(true)
-	elseif SERVER and not pl:GetStateBool() and CurTime() >= pl:GetStateStart() + self.HitTime then
+	elseif not pl:GetStateBool() and CurTime() >= pl:GetStateStart() + self.HitTime then
 		pl:SetStateBool(true)
 
-		local comp = pl:ShouldCompensate()
+		if SERVER then
+			local targets = pl:GetSweepTargets(self.Range, self.FOV, nil, nil, nil, true)
+			for _, tr in ipairs(targets) do
+				local hitent = tr.Entity
+				if hitent:IsPlayer() and not hitent:ImmuneToAll() then
+					self:HitEntity(pl, hitent, tr)
+				end
+			end
 
-		if comp then
-			pl:LagCompensation(true)
-		end
+			local ball = GAMEMODE:GetBall()
+			if not ball:GetCarrier():IsValid() then
+				local ballpos = ball:GetPos()
+				local eyepos = pl:EyePos()
+				if ballpos:Distance(eyepos) <= self.Range and util.IsVisible(ballpos, eyepos) then
+					local eyevector = pl:EyeAngles()
+					eyevector.pitch = 0
+					eyevector = eyevector:Forward()
 
-		for _, tr in ipairs(pl:GetSweepTargets(self.Range, self.FOV)) do
-			local hitent = tr.Entity
-			if hitent:IsPlayer() and not hitent:ImmuneToAll() then
-				self:HitEntity(pl, hitent, tr)
+					local dir = ballpos - eyepos
+					dir:Normalize()
+					if eyevector:Dot(dir) >= 0.4 then
+						if CurTime() >= (NEXTHOMERUN or 0) then
+							NEXTHOMERUN = CurTime() + 5
+						end
+
+						ball.LastBigPoleHit = pl
+						ball.LastBigPoleHitTime = CurTime()
+						ball:SetLastCarrier(pl)
+						ball:SetAutoReturn(0)
+						ball:EmitSound("npc/zombie/zombie_hit.wav", 90, math.Rand(95, 105))
+						local phys = ball:GetPhysicsObject()
+						if phys:IsValid() then
+							local ang = dir:Angle()
+							ang.pitch = -35
+							phys:SetVelocityInstantaneous(ang:Forward() * 731)
+						end
+					end
+				end
 			end
 		end
-
-		if comp then
-			pl:LagCompensation(false)
-		end
 	end
 end
 
-function STATE:DoAnimationEvent(pl, event, data)
-	if event == PLAYERANIMEVENT_ATTACK_PRIMARY then
-		pl:AnimRestartGesture(GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_HL2MP_GESTURE_RANGE_ATTACK_MELEE2, true)
-
-		return ACT_INVALID
-	--[[elseif event == PLAYERANIMEVENT_CUSTOM_GESTURE and data == ACT_GMOD_GESTURE_MELEE_SHOVE_2HAND then
-		pl:AnimRestartGesture(GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_GMOD_GESTURE_MELEE_SHOVE_2HAND, true)
-
-		return ACT_INVALID]]
-	end
-end
-
-function STATE:CalcMainActivity(pl, velocity)
-	pl.CalcSeqOverride = pl:LookupSequence("walk_melee2")
+--[[function STATE:CalcMainActivity(pl, velocity)
+	pl.CalcSeqOverride = pl:LookupSequence("seq_baton_swing")
 end
 
 function STATE:UpdateAnimation(pl, velocity, maxseqgroundspeed)
-	--pl:SetCycle(math.Clamp(1 - (pl:GetStateEnd() - CurTime()) / self.Time, 0, 1) * 0.8)
-	--pl:SetPlaybackRate(0)
+	pl:SetCycle(math.Clamp(1 - (pl:GetStateEnd() - CurTime()) / self.Time, 0, 1) * 0.8)
+	pl:SetPlaybackRate(0)
 
-	--return true
-end
+	return true
+end]]

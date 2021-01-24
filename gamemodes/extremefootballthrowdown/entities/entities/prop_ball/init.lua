@@ -73,7 +73,7 @@ function ENT:ReturnHome()
 	end
 
 	self.LastCarrierTeam = 0
-	
+	GAMEMODE:LocalSound("eft/ballreset.ogg")
 
 	local effectdata = EffectData()
 	effectdata:SetOrigin(self:GetPos())
@@ -87,7 +87,6 @@ function ENT:ReturnHome()
 
 	effectdata:SetOrigin(self:GetPos())
 	util.Effect("ballreset", effectdata, true, true)
-	self:EmitSound("EFTaunts.BallReset",120) --Ball reset sound is now positioned
 end
 ENT.Reset = ENT.ReturnHome
 
@@ -118,8 +117,7 @@ function ENT:Think()
 	end
 
 	if self:GetAutoReturn() > 0 and CurTime() >= self:GetAutoReturn()
-	or not carrier:IsValid() and self:WaterLevel() > 0 and not self:GetStateTable().NoWaterReturn
-	or carrier:IsValid() and carrier:WaterLevel() > 0 and not self:GetStateTable().NoWaterReturn --Breaker ball on eft_aether clips through the ground and triggers the auto return
+	or self:WaterLevel() > 0 and not self:GetStateTable().NoWaterReturn
 	or carrier:IsValid() and (carrier:WaterLevel() >= 2 and not self:GetStateTable().NoWaterReturn or CurTime() >= self.LastOnGround + 20) then -- If a person is in the air 20 seconds or more then they're probably glitching a trigger_push or something.
 		self:ReturnHome()
 		return
@@ -239,7 +237,7 @@ function ENT:Touch(ent)
 			end
 		else
 			ent:PrintMessage(HUD_PRINTCENTER, "You can't take the ball with no one on the other team!")
-	end
+		end
 	end
 
 	self:CallStateFunction("Touch", ent)
@@ -335,7 +333,6 @@ function ENT:OnTakeDamage(dmginfo)
 
 	if self:GetState() == BALL_STATE_NONE and dmginfo:IsExplosionDamage() and dmginfo:GetDamage() > 10 then
 		self:SetState(BALL_STATE_BLITZBALL, 20)
-		self:SetAutoReturn(0)
 	end
 end
 

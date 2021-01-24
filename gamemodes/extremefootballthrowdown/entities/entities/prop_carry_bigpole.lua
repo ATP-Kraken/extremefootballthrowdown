@@ -4,7 +4,7 @@ ENT.Type = "anim"
 ENT.Base = "prop_carry_base"
 
 ENT.Name = "Big Pole"
-ENT.PickupSound = Sound("weapons/draw_melee.wav")
+
 ENT.IsPropWeapon = true
 
 ENT.Model = Model("models/props_docks/dock01_pole01a_128.mdl")
@@ -17,6 +17,7 @@ ENT.AttachmentAngles = Angle(0, 0, 180)
 ENT.Mass = 150
 
 ENT.AllowDuringOverTime = true
+ENT.AllowInCompetitive = true
 
 function ENT:Initialize()
 	self.BaseClass.Initialize(self)
@@ -26,7 +27,6 @@ end
 
 function ENT:PrimaryAttack(pl)
 	if pl:CanMelee() then
-		self:EmitSound("EFTaunts.MeleeScream") --Custom sound
 		pl:SetState(STATE_BIGPOLEATTACK, STATES[STATE_BIGPOLEATTACK].Time)
 	end
 
@@ -44,29 +44,35 @@ function ENT:SecondaryAttack(pl)
 end
 
 function ENT:CalcMainActivity(pl, velocity)
+	local r = pl:GetState() == STATE_BIGPOLEATTACK and not pl:GetStateBool()
+
 	if not pl:OnGround() then
-		pl.CalcIdeal = ACT_HL2MP_JUMP_MELEE2
-		pl.CalcSeqOverride = -1
+		pl.CalcIdeal = r and ACT_HL2MP_JUMP_MELEE or ACT_HL2MP_JUMP_MELEE2
 	elseif pl:Crouching() then
-		if velocity:Length() > 0.5 then
-			pl.CalcIdeal = ACT_HL2MP_WALK_CROUCH_MELEE2
-			pl.CalcSeqOverride = -1
+		if velocity:LengthSqr() > 0.5 then
+			pl.CalcIdeal = r and ACT_HL2MP_WALK_CROUCH_MELEE or ACT_HL2MP_WALK_CROUCH_MELEE2
 		else
-			pl.CalcIdeal = ACT_HL2MP_IDLE_CROUCH_MELEE2
-			pl.CalcSeqOverride = -1
+			pl.CalcIdeal = ACT_HL2MP_IDLE_CROUCH_MELEE or ACT_HL2MP_IDLE_CROUCH_MELEE2
 		end
-	elseif velocity:Length() > 0.5 then
-		pl.CalcIdeal = ACT_HL2MP_RUN_MELEE2
-		pl.CalcSeqOverride = -1
+	elseif velocity:LengthSqr() > 0.5 then
+		pl.CalcIdeal = r and ACT_HL2MP_RUN_MELEE or ACT_HL2MP_RUN_MELEE2
 	else
-		pl.CalcIdeal = ACT_HL2MP_IDLE_MELEE2
-		pl.CalcSeqOverride = -1
+		pl.CalcIdeal = r and ACT_HL2MP_RUN_MELEE or ACT_HL2MP_IDLE_MELEE2
+	end
+
+	pl.CalcSeqOverride = -1
+end
+
+function ENT:DoAnimationEvent(pl, event, data)
+	if event == PLAYERANIMEVENT_ATTACK_PRIMARY then
+		pl:AnimRestartGesture(GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_HL2MP_GESTURE_RANGE_ATTACK_MELEE2, true)
+		return ACT_INVALID
 	end
 end
 
 function ENT:Move(pl, move)
-	move:SetMaxSpeed(move:GetMaxSpeed() * 0.75)
-	move:SetMaxClientSpeed(move:GetMaxClientSpeed() * 0.75)
+	move:SetMaxSpeed(move:GetMaxSpeed() * 0.666)
+	move:SetMaxClientSpeed(move:GetMaxClientSpeed() * 0.666)
 end
 
 function ENT:GetImpactSpeed()
@@ -101,11 +107,11 @@ function ENT:HitObject(hitpos, hitnormal, hitent)
 
 	if IsValid(hitent) and hitent:IsPlayer() and hitent:Team() ~= self:GetLastCarrierTeam() then
 		hitent:EmitSound("physics/body/body_medium_impact_hard"..math.random(3)..".wav")
-		hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 1.2, 350, 750), true)
+		hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 1.2, 350, 750), true, self:GetLastCarrier())
 		hitent:TakeDamage(20, self:GetLastCarrier(), self)
 	end
 
-	self:EmitSound("physics/wood/wood_plank_impact_soft"..math.random(3)..".wav")
+	self:EmitSound("physics/wood/wood_solid_impact_hard"..math.random(3)..".wav")
 end
 
 function ENT:OnTouch(ent)

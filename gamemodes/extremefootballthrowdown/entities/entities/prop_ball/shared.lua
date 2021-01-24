@@ -136,10 +136,6 @@ function ENT:GetStateEntity()
 	return self:GetDTEntity(2)
 end
 
-function ENT:PrimaryAttack(pl)
-	if self:CallStateFunction("PrimaryAttack",self:GetState()) then return end
-end
-
 function ENT:SecondaryAttack(pl)
 	if pl:CanThrow() then
 		pl:SetState(STATE_THROW)
@@ -265,9 +261,6 @@ function ENT:AlignToCarrier()
 	if carrier:IsValid() then
 		local set = false
 		local attachid = carrier:LookupAttachment("anim_attachment_rh")
-		if self:GetNWBool("Handedness") then
-			 attachid = carrier:LookupAttachment("anim_attachment_lh")
-		end
 		if attachid and attachid > 0 then
 			local attach = carrier:GetAttachment(attachid)
 			if attach then

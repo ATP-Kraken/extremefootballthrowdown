@@ -6,12 +6,15 @@ ENT.Base = "prop_carry_base"
 ENT.Name = "Watermelon"
 
 ENT.IsPropWeapon = true
+
 ENT.Model = Model("models/props_junk/watermelon01.mdl")
 ENT.ThrowForce = 1000
 
 ENT.BoneName = "ValveBiped.Bip01_R_Hand"
 ENT.AttachmentOffset = Vector(4, 8, 0)
 ENT.AttachmentAngles = Angle(90, 0, 90)
+
+ENT.AllowInCompetitive = true
 
 function ENT:SecondaryAttack(pl)
 	if pl:CanThrow() then
@@ -63,7 +66,7 @@ function ENT:Explode(hitpos, hitnormal, hitent)
 
 	if IsValid(hitent) and hitent:IsPlayer() and hitent:Team() ~= self:GetLastCarrierTeam() then
 		hitent:EmitSound("physics/body/body_medium_impact_hard"..math.random(6)..".wav")
-		hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 0.6, 250, 550), true)
+		hitent:ThrowFromPosition(hitpos + Vector(0, 0, -24), math.Clamp(self:GetVelocity():Length() * 0.6, 250, 550), true, self:GetLastCarrier())
 		hitent:TakeDamage(25, self:GetLastCarrier(), self)
 	end
 
@@ -72,6 +75,7 @@ function ENT:Explode(hitpos, hitnormal, hitent)
 		ent:SetPos(self:GetPos())
 		ent:SetAngles(self:GetAngles())
 		ent:SetModel(self:GetModel())
+		ent:SetCollisionGroup(COLLISION_GROUP_DEBRIS)
 		ent:Spawn()
 
 		local phys = ent:GetPhysicsObject()
@@ -84,14 +88,6 @@ function ENT:Explode(hitpos, hitnormal, hitent)
 	end
 
 	self:EmitSound("physics/flesh/flesh_bloody_break.wav")
-	
-	ball = GAMEMODE:GetBall()
-			local desstate = _G["BALL_STATE_BREAKER"] or 0
-			--if ball:GetState() ~= desstate then
-				ball:SetState(desstate, 100)
-			--end
-			ball:SetCarrier(self:GetLastCarrier())
-	
 end
 
 function ENT:OnTouch(ent)

@@ -35,6 +35,7 @@ function meta:GetStateEntity() return self:GetDTEntity(0) end
 function meta:GetStateVector() return self:GetDTVector(0) end
 function meta:GetStateAngles() return self:GetDTAngle(0) end
 function meta:GetStateBool() return self:GetDTBool(0) end
+function meta:GetStateBool2() return self:GetDTBool(1) end
 function meta:SetStateStart(time) self:SetDTFloat(0, time) end
 function meta:SetStateEnd(time) self:SetDTFloat(1, time) end
 function meta:SetStateNumber(num) self:SetDTFloat(2, num) end
@@ -43,6 +44,27 @@ function meta:SetStateEntity(ent) self:SetDTEntity(0, ent) end
 function meta:SetStateVector(vec) self:SetDTVector(0, vec) end
 function meta:SetStateAngles(ang) self:SetDTAngle(0, ang) end
 function meta:SetStateBool(bool) self:SetDTBool(0, bool) end
+function meta:SetStateBool2(bool) self:SetDTBool(1, bool) end
+
+function meta:SetCollisionMode(mode)
+	if mode ~= self:GetDTInt(3) then
+		self:SetDTInt(3, mode)
+		--self:SetCustomCollisionCheck(mode > COLLISION_NORMAL)
+		self:CollisionRulesChanged()
+	end
+end
+
+function meta:GetCollisionMode(mode)
+	return self:GetDTInt(3)
+end
+
+function meta:MaxCollisionMode(mode)
+	self:SetCollisionMode(math.max(self:GetCollisionMode(), mode))
+end
+
+function meta:MinCollisionMode(mode)
+	self:SetCollisionMode(math.min(self:GetCollisionMode(), mode))
+end
 
 local STATES = STATES
 function meta:CallStateFunction(name, ...)
@@ -77,35 +99,20 @@ function meta:IsOnPlayer()
 	return hitent and hitent:IsValid() and hitent:IsPlayer()
 end
 
-local function nocollidetimer(self, timername)
-	if self:IsValid() then
-		for _, e in pairs(ents.FindInBox(self:WorldSpaceAABB())) do
-			if e:IsPlayer() and e ~= self and GAMEMODE:ShouldCollide(self, e) then
-				return
-			end
-		end
-
-		self:SetCollisionGroup(COLLISION_GROUP_PLAYER)
+function meta:ChargingSpeedSqr()
+	if self:OnGround() then
+		return self:GetVelocity():LengthSqr()
 	end
 
-	timer.Remove(timername)
+	return self:GetVelocity():Length2DSqr()
 end
 
-function meta:TemporaryNoCollide(force)
-	if self:GetCollisionGroup() ~= COLLISION_GROUP_PLAYER and not force then return end
-
-	for _, e in pairs(ents.FindInBox(self:WorldSpaceAABB())) do
-		if e:IsPlayer() and e ~= self and GAMEMODE:ShouldCollide(self, e) then
-			self:SetCollisionGroup(COLLISION_GROUP_DEBRIS_TRIGGER)
-
-			local timername = "TemporaryNoCollide"..self:UniqueID()
-			timer.CreateEx(timername, 0, 0, nocollidetimer, self, timername)
-
-			return
-		end
+function meta:ChargingSpeed()
+	if self:OnGround() then
+		return self:GetVelocity():Length()
 	end
 
-	self:SetCollisionGroup(COLLISION_GROUP_PLAYER)
+	return self:GetVelocity():Length2D()
 end
 
 function meta:GetCarry()
@@ -126,8 +133,12 @@ function meta:IsCarrying()
 	return self:GetCarry():IsValid()
 end
 
+function meta:IsCarryingBall()
+	return self:IsCarrying() and self:GetCarry() == GAMEMODE.Ball
+end
+
 function meta:CanThrow()
-	return self:IsIdle() and self:IsCarrying() and self:OnGround() and self:GetVelocity():LengthSqr() <= 75625
+	return self:IsIdle() and self:IsCarrying() and self:OnGround() --and self:GetVelocity():LengthSqr() <= 75625
 end
 
 function meta:SetNextMoveVelocity(vel)
@@ -143,11 +154,7 @@ function meta:IsIdle()
 end
 
 function meta:CanMelee()
-	return self:IsIdle() and self:OnGround()
-end
-
-function meta:CanCharge()
-	return self:GetState() == STATE_NONE and self:GetStateInteger() == 0 and self:OnGround() and not self:Crouching() and self:GetVelocity():LengthSqr() >= 84100 and self:WaterLevel() <= 1
+	return (self:OnGround() or self:IsSwimming()) and self:IsIdle()
 end
 
 function meta:CanDodge()
@@ -183,11 +190,7 @@ function meta:GetLaunchPos(offset)
 end
 
 function meta:ImmuneToAll()
-	if self:GetCarry():IsValid() and self:GetCarry() == GAMEMODE:GetBall() and GAMEMODE:GetBall():GetState() == BALL_STATE_ULTIMATE then
-	return true
-	else
 	return self:CallStateFunction("ImmuneToAll")
-	end
 end
 
 function meta:GetTargetTrace()
@@ -195,7 +198,30 @@ function meta:GetTargetTrace()
 	return util.TraceHull({start = start, endpos = start + self:GetForward() * self:BoundingRadius(), mins = self:OBBMins() * 0.75, maxs = self:OBBMaxs() * 0.75, filter = self:GetTraceFilter(), mask = MASK_SHOT})
 end
 
-function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball)
+local P_Team = meta.Team
+local E_IsValid = FindMetaTable("Entity").IsValid
+local P_GetCollisionMode = meta.GetCollisionMode
+local COLLISION_NORMAL = COLLISION_NORMAL
+local COLLISION_PASSTHROUGH = COLLISION_PASSTHROUGH
+local COLLISION_AVOID = COLLISION_AVOID
+function meta:ShouldNotCollide(ent)
+	if P_GetCollisionMode(self) > COLLISION_NORMAL then
+		return E_IsValid(ent) and ent:IsPlayer()
+	end
+
+	return E_IsValid(ent) and ent:IsPlayer() and P_Team(ent) == P_Team(self)
+end
+
+local function InvalidateCompensatedTrace(tr, start, distance)
+	-- Need to do this or people with 300 ping will be hitting people across rooms
+	if tr.Entity:IsValid() and tr.Entity:IsPlayer() and tr.HitPos:DistToSqr(start) > distance * distance + 144 then -- Give just a little bit of leeway
+		tr.Hit = false
+		tr.HitNonWorld = false
+		tr.Entity = NULL
+	end
+end
+
+function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball, compensate)
 	local traces = {}
 
 	range = range or self:BoundingRadius()
@@ -213,6 +239,12 @@ function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball)
 		table.Add(filter, addfilter)
 	end
 
+	local uncompstart = self:WorldSpaceCenter()
+
+	if compensate then
+		self:LagCompensation(true)
+	end
+
 	local start = self:WorldSpaceCenter()
 	local trace = {start = start, mins = maxs * -1, maxs = maxs, filter = filter, mask = MASK_SHOT}
 
@@ -220,35 +252,12 @@ function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball)
 		ang:RotateAroundAxis(up, 2)
 		trace.endpos = start + ang:Forward() * (range - size / 2)
 
-				local d = DamageInfo()
-				d:SetDamage( 40 )
-				d:SetDamageForce(ang:Forward()*100000)
-				d:SetAttacker( self )
-				d:SetInflictor( self )
-			
-
 		for i=1, 20 do
 			local tr = util.TraceHull(trace)
 			local ent = tr.Entity
 			if ent and ent:IsValid() then
-			if ent:IsPlayer() then --Mercy invincibility
-		if (ent:GetState() != STATE_KNOCKEDDOWN and ent:GetState() != STATE_KNOCKDOWNRECOVER and ent:GetState() != STATE_SPINNYKNOCKDOWN ) then
-		table.insert(traces, tr)
-			table.insert(trace.filter, ent)
-		end
-		elseif !ent:IsPlayer() then
-			table.insert(traces, tr)
-			table.insert(trace.filter, ent)--Hit enemies
-			ent:TakeDamageInfo( d )
-			if ent:GetClass() == "prop_carry_soccerbomb" and ent:GetPhysicsObject():IsValid() then
-				ent:GetPhysicsObject():ApplyForceCenter(ang:Forward()*500)
-			end
-			local effectdata = EffectData()
-		effectdata:SetOrigin(tr.HitPos)
-		effectdata:SetNormal(tr.HitNormal)
-		effectdata:SetEntity(hitent)
-	util.Effect("punchhit", effectdata, true, true)
-		end
+				table.insert(traces, tr)
+				table.insert(filter, ent)
 			else
 				break
 			end
@@ -258,15 +267,8 @@ function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball)
 			local tr = util.TraceLine(trace)
 			local ent = tr.Entity
 			if ent and ent:IsValid() then
-			if ent:IsPlayer() then --Mercy invincibility
-		if (ent:GetState() != STATE_KNOCKEDDOWN and ent:GetState() != STATE_KNOCKDOWNRECOVER and ent:GetState() != STATE_SPINNYKNOCKDOWN ) then
-		table.insert(traces, tr)
-			table.insert(trace.filter, ent)
-		end
-		elseif !ent:IsPlayer() then
-			table.insert(traces, tr)
-			table.insert(trace.filter, ent)
-		end
+				table.insert(traces, tr)
+				table.insert(filter, ent)
 			else
 				break
 			end
@@ -287,15 +289,8 @@ function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball)
 				local tr = util.TraceHull(trace)
 				local ent = tr.Entity
 				if ent and ent:IsValid() then
-				if ent:IsPlayer() then --Mercy invincibility
-		if (ent:GetState() != STATE_KNOCKEDDOWN and ent:GetState() != STATE_KNOCKDOWNRECOVER and ent:GetState() != STATE_SPINNYKNOCKDOWN ) then
-		table.insert(traces, tr)
-			table.insert(trace.filter, ent)
-		end
-		elseif !ent:IsPlayer() then
-			table.insert(traces, tr)
-			table.insert(trace.filter, ent)
-		end
+					table.insert(traces, tr)
+					table.insert(filter, ent)
 				else
 					break
 				end
@@ -305,15 +300,8 @@ function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball)
 				local tr = util.TraceLine(trace)
 				local ent = tr.Entity
 				if ent and ent:IsValid() then
-				if ent:IsPlayer() then --Mercy invincibility
-		if (ent:GetState() != STATE_KNOCKEDDOWN and ent:GetState() != STATE_KNOCKDOWNRECOVER and ent:GetState() != STATE_SPINNYKNOCKDOWN ) then
-		table.insert(traces, tr)
-			table.insert(trace.filter, ent)
-		end
-		elseif !ent:IsPlayer() then
-			table.insert(traces, tr)
-			table.insert(trace.filter, ent)
-		end
+					table.insert(traces, tr)
+					table.insert(filter, ent)
 				else
 					break
 				end
@@ -321,10 +309,18 @@ function meta:GetSweepTargets(range, fov, addfilter, cross, excludeball)
 		end
 	end
 
+	if compensate then
+		self:LagCompensation(false)
+
+		for _, trr in pairs(traces) do
+			InvalidateCompensatedTrace(trr, uncompstart, range)
+		end
+	end
+
 	return traces
 end
 
-function meta:GetTargets(range, addfilter, fatness, excludeball)
+function meta:GetTargets(range, addfilter, fatness, excludeball, compensate)
 	fatness = fatness or 0.75
 
 	local traces = {}
@@ -335,15 +331,24 @@ function meta:GetTargets(range, addfilter, fatness, excludeball)
 	end
 
 	range = range or self:BoundingRadius()
+
+	local uncompstart = self:WorldSpaceCenter()
+
+	if compensate then
+		self:LagCompensation(true)
+	end
+
 	local start = self:WorldSpaceCenter()
 	local trace = {start = start, endpos = start + self:GetForward() * range, mins = self:OBBMins() * fatness, maxs = self:OBBMaxs() * fatness, filter = filter, mask = MASK_SHOT}
 
+	local tr, ent
+
 	for i=1, 20 do
-		local tr = util.TraceHull(trace)
-		local ent = tr.Entity
+		tr = util.TraceHull(trace)
+		ent = tr.Entity
 		if ent and ent:IsValid() then
-		table.insert(traces, tr)
-		table.insert(filter, ent)
+			table.insert(traces, tr)
+			table.insert(trace.filter, ent)
 		else
 			break
 		end
@@ -351,13 +356,21 @@ function meta:GetTargets(range, addfilter, fatness, excludeball)
 
 	-- Fixes being able to hide in tight spaces.
 	for i=1, 20 do
-		local tr = util.TraceLine(trace)
-		local ent = tr.Entity
+		tr = util.TraceLine(trace)
+		ent = tr.Entity
 		if ent and ent:IsValid() then
-		table.insert(traces, tr)
-		table.insert(filter, ent)
+			table.insert(traces, tr)
+			table.insert(trace.filter, ent)
 		else
 			break
+		end
+	end
+
+	if compensate then
+		self:LagCompensation(false)
+
+		for _, trr in pairs(traces) do
+			InvalidateCompensatedTrace(trr, uncompstart, range)
 		end
 	end
 
